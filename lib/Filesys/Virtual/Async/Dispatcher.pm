@@ -9,14 +9,12 @@ $VERSION = '0.01';
 # set our superclass
 use base 'Filesys::Virtual::Async';
 
+# get some handy stuff
+use File::Spec;
+
 # Set some constants
 BEGIN {
-	# Debug fun!
-	if ( ! defined &DEBUG ) {
-		## no critic
-		eval "sub DEBUG () { 0 }";
-		## use critic
-	}
+	if ( ! defined &DEBUG ) { *DEBUG = sub () { 0 } }
 }
 
 # creates a new instance
@@ -43,24 +41,25 @@ sub new {
 
 	# set the rootfs
 	if ( ! exists $opt{'rootfs'} or ! defined $opt{'rootfs'} or ! ref $opt{'rootfs'} ) {
-		die __PACKAGE__ . ' needs rootfs defined to bootstrap!';
+		die __PACKAGE__ . ' needs rootfs defined to bootstrap';
 	} else {
 		# make sure it's the proper object
 		if ( ! $opt{'rootfs'}->isa( 'Filesys::Virtual::Async' ) ) {
-			die 'rootfs is not a valid ::Async subclass!';
+			die 'rootfs is not a valid ::Async subclass';
 		}
 	}
 
 	# create our instance
 	my $self = {
-		'cwd'		=> $opt{'rootfs'}->cwd || '/',
+		'cwd'		=> $opt{'rootfs'}->cwd || File::Spec->rootdir(),
 		'mounts'	=> {},
+		'mountstree'	=> {},
 		'fhmap'		=> {},
 	};
 	bless $self, $class;
 
 	# initialize the first mount
-	$self->mount( '/', $opt{'rootfs'} );
+	$self->mount( File::Spec->rootdir(), $opt{'rootfs'} );
 
 	return $self;
 }
@@ -74,20 +73,15 @@ sub mount {
 			warn 'invalid path';
 		}
 		return 0;
+	} else {
+		# sanitize the path
+		$path = File::Spec->canonpath( $path );
 	}
 
 	# make sure it's a valid subclass
 	if ( ! defined $vfs or ! ref $vfs or ! $vfs->isa( 'Filesys::Virtual::Async' ) ) {
 		if ( DEBUG ) {
-			warn 'vfs is not a valid ::Async subclass!';
-		}
-		return 0;
-	}
-
-	# Is that path taken?
-	if ( exists $self->{'mounts'}->{ $path } ) {
-		if ( DEBUG ) {
-			warn 'Unable to mount over another mount!';
+			warn 'vfs is not a valid ::Async subclass';
 		}
 		return 0;
 	}
@@ -96,12 +90,42 @@ sub mount {
 	# this is insane... we need a callback to stat() and see if it exists!
 	# for now, we blindly mount, ha!
 
-	if ( DEBUG ) {
-		warn "Mounting '$path' with vfs:$vfs";
+	# Is that path taken?
+	if ( exists $self->{'mounts'}->{ $path } ) {
+		if ( DEBUG ) {
+			warn 'unable to mount over another mount';
+		}
+		return 0;
+	}
+
+	# Split up the path
+	my @dirs;
+	if ( $path eq File::Spec->rootdir() ) {
+		push( @dirs, File::Spec->rootdir() );
+	} else {
+		@dirs = File::Spec->splitdir( $path );
+		if ( @dirs ) {
+			$dirs[0] = File::Spec->rootdir();
+		} else {
+			if ( DEBUG ) {
+				warn 'path is not a valid directory name';
+			}
+			return 0;
+		}
 	}
 
 	# store it!
+	if ( DEBUG ) {
+		warn "mounting '$path' with $vfs";
+	}
 	$self->{'mounts'}->{ $path } = $vfs;
+
+	# build the tree
+	my $curpos = $self->{'mountstree'};
+	foreach my $dir ( @dirs ) {
+		$curpos->{ $dir } = {} if not exists $curpos->{ $dir };
+		$curpos = $curpos->{ $dir };
+	}
 
 	return 1;
 }
@@ -115,82 +139,108 @@ sub umount {
 			warn 'invalid path';
 		}
 		return 0;
+	} else {
+		# sanitize the path
+		$path = File::Spec->canonpath( $path );
 	}
 
-	# is the path mounted?
-	if ( exists $self->{'mounts'}->{ $path } ) {
+	# unable to umount the rootfs, hah!
+	if ( $path eq File::Spec->rootdir() ) {
 		if ( DEBUG ) {
-			warn "Unmounting '$path'";
-		}
-
-		# unmount it!
-		delete $self->{'mounts'}->{ $path };
-		return 1;
-	} else {
-		if ( DEBUG ) {
-			warn "Directory '$path' is not mounted!";
+			warn 'unable to umount the rootfs';
 		}
 		return 0;
 	}
+
+	# is the path mounted?
+	if ( ! exists $self->{'mounts'}->{ $path } ) {
+		if ( DEBUG ) {
+			warn "directory '$path' is not mounted";
+		}
+		return 0;
+	}
+
+	# are there any mounts under this one?
+	my @matches = grep { $_ =~ /^$path/ } ( keys %{ $self->{'mounts'} } );
+	if ( @matches > 1 ) {
+		if ( DEBUG ) {
+			warn "unable to umount '$path' as there are more mounts inside it";
+		}
+		return 0;
+	}
+
+	if ( DEBUG ) {
+		warn "umounting '$path'";
+	}
+
+	# unmount it!
+	delete $self->{'mounts'}->{ $path };
+
+	# clean up the tree
+	my @dirs = File::Spec->splitdir( $path );
+	shift( @dirs );	# get rid of the root entry which is always '' for me
+	my $curpath = File::Spec->rootdir();
+	my $curpos = $self->{'mountstree'}->{ $curpath };
+	foreach my $dir ( @dirs ) {
+		$curpath = File::Spec->catdir( $curpath, $dir );
+		if ( ! exists $self->{'mounts'}->{ $curpath } ) {
+			# yay, reached end of tree
+			delete $curpos->{ $dir };
+			last;
+		} else {
+			$curpos = $curpos->{ $dir };
+		}
+	}
+
+	return 1;
 }
 
 sub _findmount {
 	my( $self, $path ) = @_;
 
 	# get an absolute path
-	$path = $self->_fixrelpath( $path );
+	$path = File::Spec->rel2abs( $path, $self->{'cwd'} );
 
-	# look in our hash to determine which mount is responsible for this path
-	# schwartzian transform!
-	my @matches = map { $_->[0] }
-		sort { $a->[1] <=> $b->[1] }
-		map { [ $_, length( $_ ) ] }
-		grep { $_ =~ /^$path/ } ( keys %{ $self->{'mounts'} } );
+	# traverse the tree, searching for the "deepest" hash we can find
+	my @dirs = File::Spec->splitdir( $path );
+	shift( @dirs );	# get rid of the root entry which is always '' for me
+	my $curpath = File::Spec->rootdir();
+	my $curpos = $self->{'mountstree'}->{ $curpath };
+	foreach my $dir ( @dirs ) {
+		if ( exists $curpos->{ $dir } ) {
+			$curpath = File::Spec->catdir( $curpath, $dir );
 
-	# did we get any match?
-	my( $mount, $where );
-	if ( ! defined $matches[0] ) {
-		# refer to the rootfs
-		$mount = $self->{'mounts'}->{'/'};
-		$where = '/';
-	} else {
-		$mount = $self->{'mounts'}->{ $matches[0] };
-		$where = $matches[0];
-
-		# fix up the path so it's relative to the mount
-		if ( $path eq $where ) {
-			$where = '/';
-		} else {
-			if ( $where =~ /^$path(.+)$/ ) {
-				$where = $1;
+			# is it the end?
+			if ( ! defined $curpos->{ $dir } ) {
+				# found our match!
+				last;
 			} else {
-				die "inconsistency error!";
+				# continue traversing
+				$curpos = $curpos->{ $dir };
 			}
+		} else {
+			# found our match!
+			last;
 		}
 	}
 
-	return $mount, $where;
-}
-
-# makes sure we have an absolute path
-sub _fixrelpath {
-	my( $self, $path ) = @_;
-
-	if ( substr( $path, 0, 1 ) eq '/' ) {
-		return $path;
-	} else {
-		# prefix the cwd
-		return $self->{'cwd'} . '/' . $path;
+	# grab the mount object
+	if ( ! exists $self->{'mounts'}->{ $curpath } ) {
+		die "internal inconsistency - unable to find mount path($path) curpath($curpath)";
 	}
+
+	# figure out the relative path
+	my $relpath = File::Spec->catdir( File::Spec->rootdir(), File::Spec->abs2rel( $path, $curpath ) );
+
+	# all done!
+	return $self->{'mounts'}->{ $curpath }, $relpath;
 }
 
 sub cwd {
 	my( $self, $cwd, $cb ) = @_;
 
-	# sanitize the cwd ( remove slash at end )
-	if ( substr( $cwd, -1, 1 ) eq '/' ) {
-		$cwd = substr( $cwd, 0, length( $cwd ) - 1 );
-	}
+	# sanitize the path
+	$cwd = File::Spec->canonpath( $cwd );
 
 	# Get or set?
 	if ( ! defined $cwd ) {
@@ -246,10 +296,14 @@ sub open {
 	# construct our custom callback
 	my $cb = sub {
 		my $fh = shift;
-		if ( exists $self->{'fhmap'}->{ $fh } ) {
-			die "internal inconsistency - fh already exists in fhmap!";
+		if ( defined $fh ) {
+			if ( exists $self->{'fhmap'}->{ $fh } ) {
+				die "internal inconsistency - fh already exists in fhmap!";
+			}
+
+			# FIXME does $path need to be relative or absolute?
+			$self->{'fhmap'}->{ $fh } = $path;
 		}
-		$self->{'fhmap'}->{ $fh } = $path;
 		$callback->( $fh );
 	};
 
@@ -275,13 +329,15 @@ sub close {
 }
 
 sub read {
-	my( $self, $fh, $offset, $length, $data, $dataoffset, $callback ) = @_;
+	# have to leave @_ alone so aio_read will get proper $buffer reference :(
+	my $self = shift;
+	my $fh = shift;
 
 	# get the proper mount
 	if ( exists $self->{'fhmap'}->{ $fh } ) {
 		my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ $fh } );
 
-		$mount->read( $fh, $offset, $length, $data, $dataoffset, $callback );
+		$mount->read( $fh, $_[0], $_[1], $_[2], $_[3], $_[4] );
 	} else {
 		die "internal inconsistency - unknown fh: $fh";
 	}
@@ -290,13 +346,15 @@ sub read {
 }
 
 sub write {
-	my( $self, $fh, $offset, $length, $data, $dataoffset, $callback ) = @_;
+	# have to leave @_ alone so aio_read will get proper $buffer reference :(
+	my $self = shift;
+	my $fh = shift;
 
 	# get the proper mount
 	if ( exists $self->{'fhmap'}->{ $fh } ) {
 		my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ $fh } );
 
-		$mount->write( $fh, $offset, $length, $data, $dataoffset, $callback );
+		$mount->write( $fh, $_[0], $_[1], $_[2], $_[3], $_[4] );
 	} else {
 		die "internal inconsistency - unknown fh: $fh";
 	}
@@ -372,7 +430,7 @@ sub lstat {
 	# FIXME we don't support array mode because it would require insane amounts of munging the paths
 	if ( ref $fh_or_path and ref( $fh_or_path ) eq 'ARRAY' ) {
 		if ( DEBUG ) {
-			warn 'Passing an ARRAY to stat() is not supported by the Dispatcher!';
+			warn 'Passing an ARRAY to lstat() is not supported by the Dispatcher!';
 		}
 		$callback->( undef );
 		return;
@@ -648,7 +706,7 @@ sub rmtree {
 	my( $mount, $where ) = $self->_findmount( $path );
 
 	# we disallow rmtree if there's a mount under the path ( because of complications )
-	my @matching = grep { $_ =~ /^$path/ } ( keys %{ $self->{'mounts'} } );
+	my @matching = grep { $_ =~ /^$path.+/ } ( keys %{ $self->{'mounts'} } );
 	if ( @matching ) {
 		if ( DEBUG ) {
 			warn 'rmtree across mounts is not supported by the Dispatcher!';
@@ -697,6 +755,13 @@ Filesys::Virtual::Async::Dispatcher - Multiple filesystems mounted on a single f
 
 =head1 SYNOPSIS
 
+	#!/usr/bin/perl
+	use strict; use warnings;
+	use Fcntl qw( :DEFAULT :mode );	# S_IFREG S_IFDIR, O_SYNC O_LARGEFILE etc
+
+	# uncomment this to enable debugging
+	#sub Filesys::Virtual::Async::Dispatcher::DEBUG { 1 }
+
 	use Filesys::Virtual::Async::Plain;
 	use Filesys::Virtual::Async::Dispatcher;
 
@@ -704,33 +769,24 @@ Filesys::Virtual::Async::Dispatcher - Multiple filesystems mounted on a single f
 	my $rootfs = Filesys::Virtual::Async::Plain->new( 'root_path' => '/home/apoc' );
 
 	# create the extra filesystems
-	my $otherhome = Filesys::Virtual::Async::Plain->new( 'root_path' => '/home/foobar' );
+	my $tmpfs = Filesys::Virtual::Async::Plain->new( 'root_path' => '/tmp' );
 	my $procfs = Filesys::Virtual::Async::Plain->new( 'root_path' => '/proc' );
 
 	# put it all together
 	my $vfs = Filesys::Virtual::Async::Dispatcher->new( 'rootfs' => $rootfs );
-	$vfs->mount( '/otherhome', $otherhome ); 	# remember, this is relative so it would mount onto /home/apoc/otherhome
-	$vfs->mount( '/otherhome/proc', $procfs );	 # remember, this is relative so it would mount onto /home/apoc/otherhome/proc
+	$vfs->mount( '/tmp', $tmpfs ); 	# remember, this is relative so it would mount onto /home/apoc/tmp
+	$vfs->mount( '/tmp/proc', $procfs );	 # remember, this is relative so it would mount onto /tmp/proc
 
 	# use $vfs as you wish!
-	$vfs->readdir( '/', sub {		# should access the $rootfs object
+	$vfs->readdir( '/tmp/proc', sub {	# should access the $procfs object
 		my $data = shift;
 		if ( defined $data ) {
 			foreach my $e ( @$data ) {
-				print "entry in / -> $e\n";
+				print "entry in /tmp/proc -> $e\n";
 			}
+			print "end of listing for /tmp/proc\n";
 		} else {
-			print "no data in /\n";
-		}
-	} );
-	$vfs->readdir( '/otherhome/proc', sub {	# should access the $otherhome object
-		my $data = shift;
-		if ( defined $data ) {
-			foreach my $e ( @$data ) {
-				print "entry in /otherhome/proc -> $e\n";
-			}
-		} else {
-			print "no data in /otherhome/proc\n";
+			print "error reading /tmp/proc\n";
 		}
 	} );
 
@@ -740,7 +796,7 @@ Using this module will enable you to "mount" objects onto a filesystem and prope
 
 =head1 DESCRIPTION
 
-This module allows you to have arbitrary combinations of Filesys::Virtual::Async objects mounted and expose a
+This module allows you to have arbitrary combinations of L<Filesys::Virtual::Async> objects mounted and expose a
 single filesystem. The dispatcher will correctly map methods to the proper object based on their path in the
 filesystem. This works similar to the way linux manages mounts in a single "visible" filesystem.
 
@@ -750,9 +806,9 @@ This constructor accepts either a hashref or a hash, valid options are:
 
 =head3 rootfs
 
-This sets the Filesys::Virtual::Async object that will manage the "root" filesystem.
+This sets the L<Filesys::Virtual::Async> object that will manage the "root" filesystem.
 
-If this argument is undefined or not a proper subclass of Filesys::Virtual::Async new() will die.
+If this argument is undefined or not a proper subclass of L<Filesys::Virtual::Async> new() will die.
 
 =head2 Methods
 
@@ -761,7 +817,8 @@ proper object.
 
 =head3 mount
 
-Mounts a new Filesys::Virtual::Async object on the rootfs. Takes two arguments: the path and the object.
+Mounts a new L<Filesys::Virtual::Async> object on the rootfs. Takes two arguments: the path and the object. Keep in
+mind that the path is relative to the rootfs!
 
 Returns true on success, false on failure.
 
@@ -783,7 +840,8 @@ get my head around the callbacks and figure out a new API to mount with a callba
 
 =head3 umount
 
-Unmounts a mounted Filesys::Virtual::Async object. Takes one argument: the path.
+Unmounts a mounted L<Filesys::Virtual::Async> object. Takes one argument: the path. Keep in mind that the path is
+relative to the rootfs!
 
 Returns true on success, false on failure.
 
@@ -813,6 +871,13 @@ but it would have to happen in a future version :)
 
 Deleting a directory which contains another mount in it is not supported. This could be done but we would have to
 dig into the AIO code to make sure it stops deleting when it encounters the submount...
+
+=head2 Debugging
+
+You can enable debug mode which prints out some information ( and especially error messages ) by doing this:
+
+	sub Filesys::Virtual::Async::Dispatcher::DEBUG () { 1 }
+	use Filesys::Virtual::Async::Dispatcher;
 
 =head1 EXPORT
 

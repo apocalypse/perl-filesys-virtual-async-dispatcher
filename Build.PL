@@ -26,6 +26,9 @@ my $build = Module::Build->new(
 	'requires'		=> {
 		# our superclass
 		'Filesys::Virtual::Async'	=> 0,
+
+		# portable filesystem operations are a must!
+		'File::Spec'			=> 0,
 	},
 
 	# FIXME wishlist...

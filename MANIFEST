@@ -7,6 +7,8 @@ lib/Filesys/Virtual/Async/Dispatcher.pm
 META.yml
 Changes
 
+examples/simpletest.pl
+
 t/1_load.t
 
 t/a_critic.t
