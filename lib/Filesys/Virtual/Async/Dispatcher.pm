@@ -645,10 +645,12 @@ sub readdir {
 }
 
 sub load {
-	my( $self, $path, $data, $callback ) = @_;
+	# have to leave @_ alone so caller will get proper $data reference :(
+	my $self = shift;
+	my $path = shift;
 
 	my( $mount, $where ) = $self->_findmount( $path );
-	$mount->load( $where, $data, $callback );
+	$mount->load( $where, $_[0], $_[1] );
 
 	return;
 }
@@ -663,7 +665,7 @@ sub copy {
 		if ( DEBUG ) {
 			warn 'copying across mounts is not supported by the Dispatcher!';
 		}
-		$callback->( -1 );	# FIXME what's the proper failure code?
+		$callback->( 0 );
 		return;
 	}
 
