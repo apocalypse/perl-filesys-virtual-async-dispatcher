@@ -297,12 +297,12 @@ sub open {
 	my $cb = sub {
 		my $fh = shift;
 		if ( defined $fh ) {
-			if ( exists $self->{'fhmap'}->{ $fh } ) {
+			if ( exists $self->{'fhmap'}->{ fileno( $fh ) } ) {
 				die "internal inconsistency - fh already exists in fhmap!";
 			}
 
 			# FIXME does $path need to be relative or absolute?
-			$self->{'fhmap'}->{ $fh } = $path;
+			$self->{'fhmap'}->{ fileno( $fh ) } = $path;
 		}
 		$callback->( $fh );
 	};
@@ -317,8 +317,8 @@ sub close {
 	my( $self, $fh, $callback ) = @_;
 
 	# get the proper mount
-	if ( exists $self->{'fhmap'}->{ $fh } ) {
-		my( $mount, undef ) = $self->_findmount( delete $self->{'fhmap'}->{ $fh } );
+	if ( exists $self->{'fhmap'}->{ fileno( $fh ) } ) {
+		my( $mount, undef ) = $self->_findmount( delete $self->{'fhmap'}->{ fileno( $fh ) } );
 
 		$mount->close( $fh, $callback );
 	} else {
@@ -334,8 +334,8 @@ sub read {
 	my $fh = shift;
 
 	# get the proper mount
-	if ( exists $self->{'fhmap'}->{ $fh } ) {
-		my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ $fh } );
+	if ( exists $self->{'fhmap'}->{ fileno( $fh ) } ) {
+		my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ fileno( $fh ) } );
 
 		$mount->read( $fh, $_[0], $_[1], $_[2], $_[3], $_[4] );
 	} else {
@@ -351,8 +351,8 @@ sub write {
 	my $fh = shift;
 
 	# get the proper mount
-	if ( exists $self->{'fhmap'}->{ $fh } ) {
-		my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ $fh } );
+	if ( exists $self->{'fhmap'}->{ fileno( $fh ) } ) {
+		my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ fileno( $fh ) } );
 
 		$mount->write( $fh, $_[0], $_[1], $_[2], $_[3], $_[4] );
 	} else {
@@ -369,8 +369,8 @@ sub sendfile {
 	# also, which fh should we "select" from to determine mountpoint? I'm defaulting to $in_fh here...
 
 	# get the proper mount
-	if ( exists $self->{'fhmap'}->{ $in_fh } ) {
-		my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ $in_fh } );
+	if ( exists $self->{'fhmap'}->{ fileno( $in_fh ) } ) {
+		my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ fileno( $in_fh ) } );
 
 		$mount->sendfile( $out_fh, $in_fh, $in_offset, $length, $callback );
 	} else {
@@ -384,8 +384,8 @@ sub readahead {
 	my( $self, $fh, $offset, $length, $callback ) = @_;
 
 	# get the proper mount
-	if ( exists $self->{'fhmap'}->{ $fh } ) {
-		my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ $fh } );
+	if ( exists $self->{'fhmap'}->{ fileno( $fh ) } ) {
+		my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ fileno( $fh ) } );
 
 		$mount->readahead( $fh, $offset, $length, $callback );
 	} else {
@@ -410,8 +410,8 @@ sub stat {
 	# is it a fh or path?
 	if ( ref $fh_or_path ) {
 		# get the proper mount
-		if ( exists $self->{'fhmap'}->{ $fh_or_path } ) {
-			my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ $fh_or_path } );
+		if ( exists $self->{'fhmap'}->{ fileno( $fh_or_path ) } ) {
+			my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ fileno( $fh_or_path ) } );
 			$mount->stat( $fh_or_path, $callback );
 		} else {
 			die "internal inconsistency - unknown fh: $fh_or_path";
@@ -439,8 +439,8 @@ sub lstat {
 	# is it a fh or path?
 	if ( ref $fh_or_path ) {
 		# get the proper mount
-		if ( exists $self->{'fhmap'}->{ $fh_or_path } ) {
-			my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ $fh_or_path } );
+		if ( exists $self->{'fhmap'}->{ fileno( $fh_or_path ) } ) {
+			my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ fileno( $fh_or_path ) } );
 			$mount->lstat( $fh_or_path, $callback );
 		} else {
 			die "internal inconsistency - unknown fh: $fh_or_path";
@@ -459,8 +459,8 @@ sub utime {
 	# is it a fh or path?
 	if ( ref $fh_or_path ) {
 		# get the proper mount
-		if ( exists $self->{'fhmap'}->{ $fh_or_path } ) {
-			my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ $fh_or_path } );
+		if ( exists $self->{'fhmap'}->{ fileno( $fh_or_path ) } ) {
+			my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ fileno( $fh_or_path ) } );
 			$mount->utime( $fh_or_path, $atime, $mtime, $callback );
 		} else {
 			die "internal inconsistency - unknown fh: $fh_or_path";
@@ -479,8 +479,8 @@ sub chown {
 	# is it a fh or path?
 	if ( ref $fh_or_path ) {
 		# get the proper mount
-		if ( exists $self->{'fhmap'}->{ $fh_or_path } ) {
-			my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ $fh_or_path } );
+		if ( exists $self->{'fhmap'}->{ fileno( $fh_or_path ) } ) {
+			my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ fileno( $fh_or_path ) } );
 			$mount->chown( $fh_or_path, $uid, $gid, $callback );
 		} else {
 			die "internal inconsistency - unknown fh: $fh_or_path";
@@ -499,8 +499,8 @@ sub truncate {
 	# is it a fh or path?
 	if ( ref $fh_or_path ) {
 		# get the proper mount
-		if ( exists $self->{'fhmap'}->{ $fh_or_path } ) {
-			my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ $fh_or_path } );
+		if ( exists $self->{'fhmap'}->{ fileno( $fh_or_path ) } ) {
+			my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ fileno( $fh_or_path ) } );
 			$mount->truncate( $fh_or_path, $offset, $callback );
 		} else {
 			die "internal inconsistency - unknown fh: $fh_or_path";
@@ -519,8 +519,8 @@ sub chmod {
 	# is it a fh or path?
 	if ( ref $fh_or_path ) {
 		# get the proper mount
-		if ( exists $self->{'fhmap'}->{ $fh_or_path } ) {
-			my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ $fh_or_path } );
+		if ( exists $self->{'fhmap'}->{ fileno( $fh_or_path ) } ) {
+			my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ fileno( $fh_or_path ) } );
 			$mount->chmod( $fh_or_path, $mode, $callback );
 		} else {
 			die "internal inconsistency - unknown fh: $fh_or_path";
@@ -723,8 +723,8 @@ sub fsync {
 	my( $self, $fh, $callback ) = @_;
 
 	# get the proper mount
-	if ( exists $self->{'fhmap'}->{ $fh } ) {
-		my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ $fh } );
+	if ( exists $self->{'fhmap'}->{ fileno( $fh ) } ) {
+		my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ fileno( $fh ) } );
 		$mount->fsync( $fh, $callback );
 	} else {
 		die "internal inconsistency - unknown fh: $fh";
@@ -737,8 +737,8 @@ sub fdatasync {
 	my( $self, $fh, $callback ) = @_;
 
 	# get the proper mount
-	if ( exists $self->{'fhmap'}->{ $fh } ) {
-		my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ $fh } );
+	if ( exists $self->{'fhmap'}->{ fileno( $fh ) } ) {
+		my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ fileno( $fh ) } );
 		$mount->fdatasync( $fh, $callback );
 	} else {
 		die "internal inconsistency - unknown fh: $fh";
@@ -774,8 +774,8 @@ Filesys::Virtual::Async::Dispatcher - Multiple filesystems mounted on a single f
 
 	# put it all together
 	my $vfs = Filesys::Virtual::Async::Dispatcher->new( 'rootfs' => $rootfs );
-	$vfs->mount( '/tmp', $tmpfs ); 	# remember, this is relative so it would mount onto /home/apoc/tmp
-	$vfs->mount( '/tmp/proc', $procfs );	 # remember, this is relative so it would mount onto /tmp/proc
+	$vfs->mount( '/tmp', $tmpfs );
+	$vfs->mount( '/tmp/proc', $procfs );
 
 	# use $vfs as you wish!
 	$vfs->readdir( '/tmp/proc', sub {	# should access the $procfs object
@@ -800,6 +800,12 @@ This module allows you to have arbitrary combinations of L<Filesys::Virtual::Asy
 single filesystem. The dispatcher will correctly map methods to the proper object based on their path in the
 filesystem. This works similar to the way linux manages mounts in a single "visible" filesystem.
 
+It might be a bit confusing on how the paths work at first. I'm sure with a bit of experimentation and looking
+at the documentation for the Filesys::Virtual::Async::XYZ subclass, you'll get it!
+
+This module makes extensive use of the functions in L<File::Spec> to be portable, so it might trip you up if
+you are developing on a linux box and trying to mount '/foo' on a win32 box :)
+
 =head2 Initializing the dispatcher
 
 This constructor accepts either a hashref or a hash, valid options are:
@@ -817,8 +823,7 @@ proper object.
 
 =head3 mount
 
-Mounts a new L<Filesys::Virtual::Async> object on the rootfs. Takes two arguments: the path and the object. Keep in
-mind that the path is relative to the rootfs!
+Mounts a new L<Filesys::Virtual::Async> object on the rootfs. Takes two arguments: the path and the object.
 
 Returns true on success, false on failure.
 
@@ -840,8 +845,7 @@ get my head around the callbacks and figure out a new API to mount with a callba
 
 =head3 umount
 
-Unmounts a mounted L<Filesys::Virtual::Async> object. Takes one argument: the path. Keep in mind that the path is
-relative to the rootfs!
+Unmounts a mounted L<Filesys::Virtual::Async> object. Takes one argument: the path.
 
 Returns true on success, false on failure.
 
