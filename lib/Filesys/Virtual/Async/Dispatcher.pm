@@ -12,6 +12,9 @@ use base 'Filesys::Virtual::Async';
 # get some handy stuff
 use File::Spec;
 
+# get the refaddr of our FHs
+use Scalar::Util qw( refaddr openhandle );
+
 # Set some constants
 BEGIN {
 	if ( ! defined &DEBUG ) { *DEBUG = sub () { 0 } }
@@ -281,6 +284,20 @@ sub root_path {
 	return;
 }
 
+sub _resolve_fh {
+	my $fh = shift;
+	my $ret = undef;
+	if ( openhandle( $fh ) ) {
+		$ret = refaddr( $fh );
+		if ( ! defined $ret ) {
+			# try direct stringy eval
+			$ret = "$fh";
+		}
+	}
+
+	return $ret;
+}
+
 sub dirlist {
 	my ( $self, $path, $withstat, $callback ) = @_;
 
@@ -297,14 +314,21 @@ sub open {
 	my $cb = sub {
 		my $fh = shift;
 		if ( defined $fh ) {
-			if ( exists $self->{'fhmap'}->{ fileno( $fh ) } ) {
-				die "internal inconsistency - fh already exists in fhmap!";
-			}
+			my $mapping = $self->_resolve_fh( $fh );
+			if ( defined $mapping ) {
+				if ( exists $self->{'fhmap'}->{ $mapping } ) {
+					die "internal inconsistency - fh already exists in fhmap!";
+				}
 
-			# FIXME does $path need to be relative or absolute?
-			$self->{'fhmap'}->{ fileno( $fh ) } = $path;
+				# FIXME does $path need to be relative or absolute?
+				$self->{'fhmap'}->{ $mapping } = $path;
+				$callback->( $fh );
+			} else {
+				die "unable to determine mapping for fh: $fh";
+			}
+		} else {
+			$callback->( -EIO() );
 		}
-		$callback->( $fh );
 	};
 
 	my( $mount, $where ) = $self->_findmount( $path );
@@ -317,10 +341,15 @@ sub close {
 	my( $self, $fh, $callback ) = @_;
 
 	# get the proper mount
-	if ( exists $self->{'fhmap'}->{ fileno( $fh ) } ) {
-		my( $mount, undef ) = $self->_findmount( delete $self->{'fhmap'}->{ fileno( $fh ) } );
+	my $mapping = $self->_resolve_fh( $fh );
+	if ( defined $mapping ) {
+		if ( exists $self->{'fhmap'}->{ $mapping } ) {
+			my( $mount, undef ) = $self->_findmount( delete $self->{'fhmap'}->{ $mapping } );
 
-		$mount->close( $fh, $callback );
+			$mount->close( $fh, $callback );
+		} else {
+			die "internal inconsistency - unknown fh: $fh";
+		}
 	} else {
 		die "internal inconsistency - unknown fh: $fh";
 	}
@@ -334,10 +363,15 @@ sub read {
 	my $fh = shift;
 
 	# get the proper mount
-	if ( exists $self->{'fhmap'}->{ fileno( $fh ) } ) {
-		my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ fileno( $fh ) } );
+	my $mapping = $self->_resolve_fh( $fh );
+	if ( defined $mapping ) {
+		if ( exists $self->{'fhmap'}->{ $mapping } ) {
+			my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ $mapping } );
 
-		$mount->read( $fh, $_[0], $_[1], $_[2], $_[3], $_[4] );
+			$mount->read( $fh, $_[0], $_[1], $_[2], $_[3], $_[4] );
+		} else {
+			die "internal inconsistency - unknown fh: $fh";
+		}
 	} else {
 		die "internal inconsistency - unknown fh: $fh";
 	}
@@ -351,10 +385,15 @@ sub write {
 	my $fh = shift;
 
 	# get the proper mount
-	if ( exists $self->{'fhmap'}->{ fileno( $fh ) } ) {
-		my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ fileno( $fh ) } );
+	my $mapping = $self->_resolve_fh( $fh );
+	if ( defined $mapping ) {
+		if ( exists $self->{'fhmap'}->{ $mapping } ) {
+			my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ $mapping } );
 
-		$mount->write( $fh, $_[0], $_[1], $_[2], $_[3], $_[4] );
+			$mount->write( $fh, $_[0], $_[1], $_[2], $_[3], $_[4] );
+		} else {
+			die "internal inconsistency - unknown fh: $fh";
+		}
 	} else {
 		die "internal inconsistency - unknown fh: $fh";
 	}
@@ -369,10 +408,15 @@ sub sendfile {
 	# also, which fh should we "select" from to determine mountpoint? I'm defaulting to $in_fh here...
 
 	# get the proper mount
-	if ( exists $self->{'fhmap'}->{ fileno( $in_fh ) } ) {
-		my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ fileno( $in_fh ) } );
+	my $mapping = $self->_resolve_fh( $in_fh );
+	if ( defined $mapping ) {
+		if ( exists $self->{'fhmap'}->{ $mapping } ) {
+			my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ $mapping } );
 
-		$mount->sendfile( $out_fh, $in_fh, $in_offset, $length, $callback );
+			$mount->sendfile( $out_fh, $in_fh, $in_offset, $length, $callback );
+		} else {
+			die "internal inconsistency - unknown fh: $in_fh";
+		}
 	} else {
 		die "internal inconsistency - unknown fh: $in_fh";
 	}
@@ -384,10 +428,15 @@ sub readahead {
 	my( $self, $fh, $offset, $length, $callback ) = @_;
 
 	# get the proper mount
-	if ( exists $self->{'fhmap'}->{ fileno( $fh ) } ) {
-		my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ fileno( $fh ) } );
+	my $mapping = $self->_resolve_fh( $fh );
+	if ( defined $mapping ) {
+		if ( exists $self->{'fhmap'}->{ $mapping } ) {
+			my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ $mapping } );
 
-		$mount->readahead( $fh, $offset, $length, $callback );
+			$mount->readahead( $fh, $offset, $length, $callback );
+		} else {
+			die "internal inconsistency - unknown fh: $fh";
+		}
 	} else {
 		die "internal inconsistency - unknown fh: $fh";
 	}
@@ -410,9 +459,14 @@ sub stat {
 	# is it a fh or path?
 	if ( ref $fh_or_path ) {
 		# get the proper mount
-		if ( exists $self->{'fhmap'}->{ fileno( $fh_or_path ) } ) {
-			my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ fileno( $fh_or_path ) } );
-			$mount->stat( $fh_or_path, $callback );
+		my $mapping = $self->_resolve_fh( $fh_or_path );
+		if ( defined $mapping ) {
+			if ( exists $self->{'fhmap'}->{ $mapping } ) {
+				my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ $mapping } );
+				$mount->stat( $fh_or_path, $callback );
+			} else {
+				die "internal inconsistency - unknown fh: $fh_or_path";
+			}
 		} else {
 			die "internal inconsistency - unknown fh: $fh_or_path";
 		}
@@ -439,9 +493,14 @@ sub lstat {
 	# is it a fh or path?
 	if ( ref $fh_or_path ) {
 		# get the proper mount
-		if ( exists $self->{'fhmap'}->{ fileno( $fh_or_path ) } ) {
-			my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ fileno( $fh_or_path ) } );
-			$mount->lstat( $fh_or_path, $callback );
+		my $mapping = $self->_resolve_fh( $fh_or_path );
+		if ( defined $mapping ) {
+			if ( exists $self->{'fhmap'}->{ $mapping } ) {
+				my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ $mapping } );
+				$mount->lstat( $fh_or_path, $callback );
+			} else {
+				die "internal inconsistency - unknown fh: $fh_or_path";
+			}
 		} else {
 			die "internal inconsistency - unknown fh: $fh_or_path";
 		}
@@ -459,9 +518,14 @@ sub utime {
 	# is it a fh or path?
 	if ( ref $fh_or_path ) {
 		# get the proper mount
-		if ( exists $self->{'fhmap'}->{ fileno( $fh_or_path ) } ) {
-			my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ fileno( $fh_or_path ) } );
-			$mount->utime( $fh_or_path, $atime, $mtime, $callback );
+		my $mapping = $self->_resolve_fh( $fh_or_path );
+		if ( defined $mapping ) {
+			if ( exists $self->{'fhmap'}->{ $mapping } ) {
+				my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ $mapping } );
+				$mount->utime( $fh_or_path, $atime, $mtime, $callback );
+			} else {
+				die "internal inconsistency - unknown fh: $fh_or_path";
+			}
 		} else {
 			die "internal inconsistency - unknown fh: $fh_or_path";
 		}
@@ -479,9 +543,14 @@ sub chown {
 	# is it a fh or path?
 	if ( ref $fh_or_path ) {
 		# get the proper mount
-		if ( exists $self->{'fhmap'}->{ fileno( $fh_or_path ) } ) {
-			my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ fileno( $fh_or_path ) } );
-			$mount->chown( $fh_or_path, $uid, $gid, $callback );
+		my $mapping = $self->_resolve_fh( $fh_or_path );
+		if ( defined $mapping ) {
+			if ( exists $self->{'fhmap'}->{ $mapping } ) {
+				my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ $mapping } );
+				$mount->chown( $fh_or_path, $uid, $gid, $callback );
+			} else {
+				die "internal inconsistency - unknown fh: $fh_or_path";
+			}
 		} else {
 			die "internal inconsistency - unknown fh: $fh_or_path";
 		}
@@ -499,9 +568,14 @@ sub truncate {
 	# is it a fh or path?
 	if ( ref $fh_or_path ) {
 		# get the proper mount
-		if ( exists $self->{'fhmap'}->{ fileno( $fh_or_path ) } ) {
-			my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ fileno( $fh_or_path ) } );
-			$mount->truncate( $fh_or_path, $offset, $callback );
+		my $mapping = $self->_resolve_fh( $fh_or_path );
+		if ( defined $mapping ) {
+			if ( exists $self->{'fhmap'}->{ $mapping } ) {
+				my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ $mapping } );
+				$mount->truncate( $fh_or_path, $offset, $callback );
+			} else {
+				die "internal inconsistency - unknown fh: $fh_or_path";
+			}
 		} else {
 			die "internal inconsistency - unknown fh: $fh_or_path";
 		}
@@ -519,9 +593,14 @@ sub chmod {
 	# is it a fh or path?
 	if ( ref $fh_or_path ) {
 		# get the proper mount
-		if ( exists $self->{'fhmap'}->{ fileno( $fh_or_path ) } ) {
-			my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ fileno( $fh_or_path ) } );
-			$mount->chmod( $fh_or_path, $mode, $callback );
+		my $mapping = $self->_resolve_fh( $fh_or_path );
+		if ( defined $mapping ) {
+			if ( exists $self->{'fhmap'}->{ $mapping } ) {
+				my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ $mapping } );
+				$mount->chmod( $fh_or_path, $mode, $callback );
+			} else {
+				die "internal inconsistency - unknown fh: $fh_or_path";
+			}
 		} else {
 			die "internal inconsistency - unknown fh: $fh_or_path";
 		}
@@ -725,9 +804,15 @@ sub fsync {
 	my( $self, $fh, $callback ) = @_;
 
 	# get the proper mount
-	if ( exists $self->{'fhmap'}->{ fileno( $fh ) } ) {
-		my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ fileno( $fh ) } );
-		$mount->fsync( $fh, $callback );
+	my $mapping = $self->_resolve_fh( $fh );
+	if ( defined $mapping ) {
+		if ( exists $self->{'fhmap'}->{ $mapping } ) {
+			my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ $mapping } );
+
+			$mount->fsync( $fh, $callback );
+		} else {
+			die "internal inconsistency - unknown fh: $fh";
+		}
 	} else {
 		die "internal inconsistency - unknown fh: $fh";
 	}
@@ -739,9 +824,15 @@ sub fdatasync {
 	my( $self, $fh, $callback ) = @_;
 
 	# get the proper mount
-	if ( exists $self->{'fhmap'}->{ fileno( $fh ) } ) {
-		my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ fileno( $fh ) } );
-		$mount->fdatasync( $fh, $callback );
+	my $mapping = $self->_resolve_fh( $fh );
+	if ( defined $mapping ) {
+		if ( exists $self->{'fhmap'}->{ $mapping } ) {
+			my( $mount, undef ) = $self->_findmount( $self->{'fhmap'}->{ $mapping } );
+
+			$mount->fdatasync( $fh, $callback );
+		} else {
+			die "internal inconsistency - unknown fh: $fh";
+		}
 	} else {
 		die "internal inconsistency - unknown fh: $fh";
 	}
