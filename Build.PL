@@ -29,6 +29,10 @@ my $build = Module::Build->new(
 
 		# portable filesystem operations are a must!
 		'File::Spec'			=> 0,
+
+		# system constants
+		'Errno'				=> 0,
+		'Fcntl'				=> 0,
 	},
 
 	# FIXME wishlist...

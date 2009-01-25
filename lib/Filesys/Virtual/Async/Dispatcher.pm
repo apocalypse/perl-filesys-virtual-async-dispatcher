@@ -15,6 +15,10 @@ use File::Spec;
 # get the refaddr of our FHs
 use Scalar::Util qw( refaddr openhandle );
 
+# get some system constants
+use Errno qw( :POSIX );			# ENOENT EISDIR etc
+use Fcntl qw( :DEFAULT :mode :seek );	# S_IFREG S_IFDIR, O_SYNC O_LARGEFILE etc
+
 # Set some constants
 BEGIN {
 	if ( ! defined &DEBUG ) { *DEBUG = sub () { 0 } }
@@ -285,6 +289,7 @@ sub root_path {
 }
 
 sub _resolve_fh {
+	my $self = shift;
 	my $fh = shift;
 	my $ret = undef;
 	if ( openhandle( $fh ) ) {

@@ -9,16 +9,16 @@ use Filesys::Virtual::Async::Plain;
 use Filesys::Virtual::Async::Dispatcher;
 
 # create the root filesystem
-my $rootfs = Filesys::Virtual::Async::Plain->new( 'root_path' => $ENV{'PWD'} );
+my $rootfs = Filesys::Virtual::Async::Plain->new( 'root' => $ENV{'PWD'} );
 
 # create the extra filesystems
-my $tmpfs = Filesys::Virtual::Async::Plain->new( 'root_path' => '/tmp' );
-my $procfs = Filesys::Virtual::Async::Plain->new( 'root_path' => '/proc' );
+my $tmpfs = Filesys::Virtual::Async::Plain->new( 'root' => '/tmp' );
+my $procfs = Filesys::Virtual::Async::Plain->new( 'root' => '/proc' );
 
 # put it all together
 my $vfs = Filesys::Virtual::Async::Dispatcher->new( 'rootfs' => $rootfs );
-$vfs->mount( '/tmp', $tmpfs ); 	# remember, this is relative so it would mount onto /home/apoc/tmp
-$vfs->mount( '/tmp/proc', $procfs );	 # remember, this is relative so it would mount onto /tmp/proc
+$vfs->mount( '/tmp', $tmpfs );
+$vfs->mount( '/tmp/proc', $procfs );
 
 # use $vfs as you wish!
 $vfs->readdir( '/', sub {	# should access the $rootfs object
