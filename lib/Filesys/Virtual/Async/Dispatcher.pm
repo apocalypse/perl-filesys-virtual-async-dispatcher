@@ -280,10 +280,10 @@ sub cwd {
 	}
 }
 
-sub root_path {
+sub root {
 	# we cannot sanely do this because we have no idea which mount to apply it to...
 	if ( DEBUG ) {
-		warn 'Setting root_path on the dispatcher has no meaning, please do it directly on the mount!';
+		warn 'Setting root on the dispatcher has no meaning, please do it directly on the mount!';
 	}
 	return;
 }
