@@ -792,8 +792,8 @@ sub rmtree {
 	my( $mount, $where ) = $self->_findmount( $path );
 
 	# we disallow rmtree if there's a mount under the path ( because of complications )
-	my @matching = grep { $_ =~ /^$path.+/ } ( keys %{ $self->{'mounts'} } );
-	if ( @matching ) {
+	my $matches = grep { $_ =~ /^$path.+/ } ( keys %{ $self->{'mounts'} } );
+	if ( $matches ) {
 		if ( DEBUG ) {
 			warn 'rmtree across mounts is not supported by the Dispatcher!';
 		}
@@ -864,11 +864,11 @@ Filesys::Virtual::Async::Dispatcher - Multiple filesystems mounted on a single f
 	use Filesys::Virtual::Async::Dispatcher;
 
 	# create the root filesystem
-	my $rootfs = Filesys::Virtual::Async::Plain->new( 'root_path' => '/home/apoc' );
+	my $rootfs = Filesys::Virtual::Async::Plain->new( 'root' => $ENV{'PWD'} );
 
 	# create the extra filesystems
-	my $tmpfs = Filesys::Virtual::Async::Plain->new( 'root_path' => '/tmp' );
-	my $procfs = Filesys::Virtual::Async::Plain->new( 'root_path' => '/proc' );
+	my $tmpfs = Filesys::Virtual::Async::Plain->new( 'root' => '/tmp' );
+	my $procfs = Filesys::Virtual::Async::Plain->new( 'root' => '/proc' );
 
 	# put it all together
 	my $vfs = Filesys::Virtual::Async::Dispatcher->new( 'rootfs' => $rootfs );
@@ -952,7 +952,7 @@ Returns true on success, false on failure.
 Currently, this module does a pretty good job of dispatching methods to the proper object. However, there are some
 methods which have exceptions to this rule.
 
-=head3 root_path
+=head3 root
 
 Unimplemented, please do it directly on the object you are mounting onto the dispatcher.
 
