@@ -329,7 +329,8 @@ sub open {
 				$self->{'fhmap'}->{ $mapping } = $path;
 				$callback->( $fh );
 			} else {
-				die "unable to determine mapping for fh: $fh";
+				# must be an error code
+				$callback->( $fh );
 			}
 		} else {
 			$callback->( -EIO() );
