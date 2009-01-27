@@ -104,11 +104,9 @@ sub check_cpan {
 			my @versions = split( ',', $version );
 
 			# sort them by version, descending
-			@versions =
-				sort { $b <=> $a }
-				map { version->new( $_ ) }
-				map { $_ =~ s/[\s<>=!]+//; $_ }
-				@versions;
+			s/[\s<>=!]+// for @versions;
+			@versions = sort { $b <=> $a }
+				map { version->new( $_ ) } @versions;
 
 			# pick the highest version to use as comparison
 			$version = $versions[0];
