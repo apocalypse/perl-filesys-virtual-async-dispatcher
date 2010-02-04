@@ -4,7 +4,7 @@ use strict; use warnings;
 
 # Initialize our version
 use vars qw( $VERSION );
-$VERSION = '0.01';
+$VERSION = '0.02';
 
 # set our superclass
 use base 'Filesys::Virtual::Async';
@@ -130,6 +130,7 @@ sub mount {
 	# build the tree
 	my $curpos = $self->{'mountstree'};
 	foreach my $dir ( @dirs ) {
+		## no critic ( ProhibitAccessOfPrivateData )
 		$curpos->{ $dir } = {} if not exists $curpos->{ $dir };
 		$curpos = $curpos->{ $dir };
 	}
@@ -192,10 +193,10 @@ sub umount {
 		$curpath = File::Spec->catdir( $curpath, $dir );
 		if ( ! exists $self->{'mounts'}->{ $curpath } ) {
 			# yay, reached end of tree
-			delete $curpos->{ $dir };
+			delete $curpos->{ $dir };	## no critic ( ProhibitAccessOfPrivateData )
 			last;
 		} else {
-			$curpos = $curpos->{ $dir };
+			$curpos = $curpos->{ $dir };	## no critic ( ProhibitAccessOfPrivateData )
 		}
 	}
 
@@ -214,6 +215,7 @@ sub _findmount {
 	my $curpath = File::Spec->rootdir();
 	my $curpos = $self->{'mountstree'}->{ $curpath };
 	foreach my $dir ( @dirs ) {
+		## no critic ( ProhibitAccessOfPrivateData )
 		if ( exists $curpos->{ $dir } ) {
 			$curpath = File::Spec->catdir( $curpath, $dir );
 
@@ -848,6 +850,9 @@ sub fdatasync {
 
 1;
 __END__
+
+=for stopwords umount xantus AIO callback linux rmtree rootfs submount API Unmounts callbacks
+
 =head1 NAME
 
 Filesys::Virtual::Async::Dispatcher - Multiple filesystems mounted on a single filesystem
@@ -1000,6 +1005,10 @@ You can find documentation for this module with the perldoc command.
 
 =over 4
 
+=item * Search CPAN
+
+L<http://search.cpan.org/dist/Filesys-Virtual-Async-Dispatcher>
+
 =item * AnnoCPAN: Annotated CPAN documentation
 
 L<http://annocpan.org/dist/Filesys-Virtual-Async-Dispatcher>
@@ -1008,13 +1017,29 @@ L<http://annocpan.org/dist/Filesys-Virtual-Async-Dispatcher>
 
 L<http://cpanratings.perl.org/d/Filesys-Virtual-Async-Dispatcher>
 
-=item * RT: CPAN's request tracker
+=item * CPAN Forum
+
+L<http://cpanforum.com/dist/Filesys-Virtual-Async-Dispatcher>
+
+=item * RT: CPAN's Request Tracker
 
 L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=Filesys-Virtual-Async-Dispatcher>
 
-=item * Search CPAN
+=item * CPANTS Kwalitee
 
-L<http://search.cpan.org/dist/Filesys-Virtual-Async-Dispatcher>
+L<http://cpants.perl.org/dist/overview/Filesys-Virtual-Async-Dispatcher>
+
+=item * CPAN Testers Results
+
+L<http://cpantesters.org/distro/F/Filesys-Virtual-Async-Dispatcher.html>
+
+=item * CPAN Testers Matrix
+
+L<http://matrix.cpantesters.org/?dist=Filesys-Virtual-Async-Dispatcher>
+
+=item * Git Source Code Repository
+
+L<http://github.com/apocalypse/perl-filesys-virtual-async-dispatcher>
 
 =back
 
@@ -1032,7 +1057,7 @@ Props goes to xantus who got me motivated to write this :)
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright 2009 by Apocalypse
+Copyright 2010 by Apocalypse
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself.

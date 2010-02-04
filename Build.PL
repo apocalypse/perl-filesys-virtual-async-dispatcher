@@ -13,15 +13,12 @@ my $build = Module::Build->new(
 	'create_packlist'	=> 1,
 	'create_makefile_pl'	=> 'traditional',
 	'create_readme'		=> 1,
+	'create_license'	=> 1,
+	'sign'			=> 0,
 
 	'test_files'		=> 't/*.t',
 
-	'add_to_cleanup'	=> [ 'META.yml', 'Makefile.PL', 'README' ],	# automatically generated
-
-	'build_requires'	=> {
-		# Test stuff
-		'Test::More'			=> '0.86',	# require latest for note() support in t/a_is_prereq_outdated.t
-	},
+	'add_to_cleanup'	=> [ 'META.yml', 'Makefile.PL', 'README', 'Makefile', 'LICENSE' ], # automatically generated
 
 	'requires'		=> {
 		# our superclass
@@ -33,28 +30,20 @@ my $build = Module::Build->new(
 		# system constants
 		'Errno'				=> 0,
 		'Fcntl'				=> 0,
+
+		# we need a recent perl
+		'perl'				=> '5.006',
 	},
 
-	# FIXME wishlist...
-#	'test_requires'		=> {
-#		# Test stuff
-#		'Test::Compile'		=> 0,
-#		'Test::Perl::Critic'	=> 0,
-#		'Test::Dependencies'	=> 0,
-#		'Test::Distribution'	=> 0,
-#		'Test::Fixme'		=> 0,
-#		'Test::HasVersion'	=> 0,
-#		'Test::Kwalitee'	=> 0,
-#		'Test::CheckManifest'	=> 0,
-#		'Test::MinimumVersion'	=> 0,
-#		'Test::Pod::Coverage'	=> 0,
-#		'Test::Spelling'	=> 0,
-#		'Test::Pod'		=> 0,
-#		'Test::Prereq'		=> 0,
-#		'Test::Strict'		=> 0,
-#		'Test::UseAllModules'	=> 0,
-#		'Test::YAML::Meta'	=> 0,
-#	},
+	# include the standard stuff in META.yml
+	'meta_merge'	=> {
+		'resources'	=> {
+			'license'	=> 'http://dev.perl.org/licenses/',
+			'homepage'	=> 'http://search.cpan.org/dist/Filesys-Virtual-Async-Dispatcher',
+			'bugtracker'	=> 'http://rt.cpan.org/NoAuth/Bugs.html?Dist=Filesys-Virtual-Async-Dispatcher',
+			'repository'	=> 'http://github.com/apocalypse/perl-filesys-virtual-async-dispatcher',
+		},
+	},
 );
 
 # all done!
