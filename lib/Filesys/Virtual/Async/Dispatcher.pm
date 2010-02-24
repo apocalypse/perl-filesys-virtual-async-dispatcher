@@ -851,7 +851,7 @@ sub fdatasync {
 1;
 __END__
 
-=for stopwords umount xantus AIO callback linux rmtree rootfs submount API Unmounts callbacks
+=for stopwords umount xantus AIO callback linux rmtree rootfs submount API Unmounts callbacks AnnoCPAN CPAN CPANTS Kwalitee RT com diff github
 
 =head1 NAME
 
@@ -1038,6 +1038,10 @@ L<http://cpantesters.org/distro/F/Filesys-Virtual-Async-Dispatcher.html>
 L<http://matrix.cpantesters.org/?dist=Filesys-Virtual-Async-Dispatcher>
 
 =item * Git Source Code Repository
+
+This code is currently hosted on github.com under the account "apocalypse". Please feel free to browse it
+and pull from it, or whatever. If you want to contribute patches, please send me a diff or prod me to pull
+from your repository :)
 
 L<http://github.com/apocalypse/perl-filesys-virtual-async-dispatcher>
 

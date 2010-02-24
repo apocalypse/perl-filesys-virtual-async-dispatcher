@@ -1,4 +1,5 @@
 # Build.PL
+use strict; use warnings;
 use Module::Build;
 
 my $build = Module::Build->new(
